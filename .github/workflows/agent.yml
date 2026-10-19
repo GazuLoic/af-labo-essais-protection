@@ -1,0 +1,46 @@
+# Agent d'essai : joue les gestes interdits avec le jeton automatique d'Actions (identite github-actions[bot],
+# droits contents/statuses/pull-requests en ecriture, AUCUN droit d'administration). Lance a la main.
+name: agent
+on:
+  workflow_dispatch:
+    inputs:
+      essai:
+        required: true
+        type: string
+      cible:
+        required: false
+        type: string
+        default: ''
+permissions:
+  contents: write
+  statuses: write
+  pull-requests: write
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: essai
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ESSAI: ${{ inputs.essai }}
+          CIBLE: ${{ inputs.cible }}
+        run: |
+          git config user.name agent-essai; git config user.email agent@example.invalid
+          set +e
+          r=$GITHUB_REPOSITORY
+          case "$ESSAI" in
+            t1) echo "agent" >> README.md; git commit -qam "agent: push direct"; git push origin HEAD:main; echo "RESULTAT t1 rc=$?" ;;
+            t2) git commit -q --amend --allow-empty -m "agent: reecriture"; git push --force origin HEAD:main; echo "RESULTAT t2 rc=$?" ;;
+            t3) git push origin --delete main; echo "RESULTAT t3 rc=$?" ;;
+            t4) git push origin HEAD:refs/heads/release/agent; echo "RESULTAT t4 rc=$?" ;;
+            t5) for c in ci verdict; do gh api -X POST "repos/$r/statuses/$CIBLE" -f state=success -f context=$c -f description=forge-agent >/dev/null; echo "RESULTAT t5 statut $c rc=$?"; done ;;
+            t6) gh api "repos/$r/rulesets" --jq 'length'; echo "RESULTAT t6 lecture rc=$?"
+                id=$(gh api "repos/$r/rulesets" --jq '.[0].id' 2>/dev/null)
+                gh api -X PUT "repos/$r/rulesets/${id:-0}" -f enforcement=disabled; echo "RESULTAT t6 modification rc=$?"
+                gh api -X DELETE "repos/$r/rulesets/${id:-0}"; echo "RESULTAT t6 suppression rc=$?" ;;
+            t7) gh pr review "$CIBLE" --repo "$r" --approve; echo "RESULTAT t7 approbation rc=$?" ;;
+            *) echo "essai inconnu"; exit 2 ;;
+          esac
